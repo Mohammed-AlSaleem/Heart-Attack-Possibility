@@ -1,0 +1,94 @@
+---
+title: "\\fontsize{12pt}{3pt} \\underline{\\textbf{\\textit{APPENDIX}}}"
+geometry: "left=2cm,right=3cm,top=1cm,bottom=1.5cm"
+output: pdf_document
+header-includes:
+  - \usepackage{titling}
+  - \pretitle{\begin{flushleft}}
+  - \posttitle{\end{flushleft}}
+---
+\pagenumbering{gobble}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+heart = read.csv('heart.csv')
+str(heart)
+
+par(mfrow = c(1,2))
+for( i in 1:13){
+  boxplot(heart[,i] ~ target, data = heart, main = paste(colnames(heart)[i], 'vs. target'),ylab = colnames(heart)[i], col = 'sky blue')
+}
+par(mfrow = c(1,1))
+```
+
+from the Box plots we can see there are no differences in targets with age, trestbps, chol, fbs, restecg, and slope.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+model0 <- glm(target~., data = heart, family = binomial)
+summary(model0)[c('call','coefficients','aic')]
+
+library(MPV)
+paste0('PRESS = ',round(PRESS(model0),4)) # PRESS: Predicted Residual Error Sum of Squares
+```
+
+(Backward stepwise selection) After deleting biggest not significant (a=0.05) p-values one by one, we end with model7.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+model1 <- glm(target~. -fbs, data = heart, family = binomial); #summary(model1)
+model2 <- glm(target~. -fbs -age, data = heart, family = binomial); #summary(model2)
+model3 <- glm(target~. -fbs -age -chol, data = heart, family = binomial); #summary(model3)
+model4 <- glm(target~. -fbs -age -chol +0, data = heart, family = binomial); #summary(model4)
+model5 <- glm(target~. -fbs -age -chol +0 -trestbps, data = heart, family = binomial); #summary(model5)
+model6 <- glm(target~. -fbs -age -chol +0 -trestbps -slope, data = heart, family = binomial); 
+#summary(model6)
+model7 <- glm(target~. -fbs -age -chol +0 -trestbps -slope -restecg, data = heart, family = binomial); 
+summary(model7)[c('call','coefficients','aic')]
+
+paste0('PRESS = ',round(PRESS(model7),4))
+```
+model7 variables are all significant, and it have better results of AIC and PRESS compared with model0. AIC decreased from 239.44 to 237.41, and PRESS decreased from 243.4828 to 238.6847.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(pROC)
+resROC = roc(heart$target ~ model7$fitted)
+plot(resROC, print.auc = T, legacy.axes = T, main = 'ROC curve')
+```
+
+From the ROC plot curve and the high value of AUC equal to 0.911, we conclude that the model7 have a good fit.
+
+The final model: log(odds) = -1.3898×sex + 0.7861×cp + 0.0261×thalach - 1.0130×exang - 0.7262×oldpeak - 0.7053×ca - 0.8674×thal
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# confusion matrix
+glm.probs <- predict(model7, type="response")
+model7.pred = rep("azero", nrow(heart))
+model7.pred[glm.probs > 0.5] = "one"
+(mytable <- table(model7.pred, heart$target))
+
+# APER, apparent error rates
+APER = (mytable[1,2]+mytable[2,1])/nrow(heart)
+Accuracy = 1-APER
+Sensitivity = mytable[1,1]/(mytable[1,1] + mytable[2,1])
+Specificity = mytable[2,2]/(mytable[1,2] + mytable[2,2])
+
+paste0('Accuracy = ',round(Accuracy,4))
+paste0('Sensitivity = ',round(Sensitivity,4))
+paste0('Specificity = ',round(Specificity,4))
+```
+all Accuracy, Sensitivity, and Specificity have big value which tell the predict is good.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+for( i in 3:7){ # test different cuts.
+  model7.pred = rep("azero", nrow(heart))
+  model7.pred[glm.probs > i/10] = "one"
+  mytable <- table(model7.pred, heart$target)
+
+  APER = (mytable[1,2]+mytable[2,1])/nrow(heart)
+  (Accuracy[i] = 1-APER)
+  (Sensitivity[i] = mytable[1,1]/(mytable[1,1] + mytable[2,1]))
+  (Specificity[i] = mytable[2,2]/(mytable[1,2] + mytable[2,2]))
+  print(paste0('For cut ',i/10,': Accuracy = ', round(Accuracy[i],4),', Sensitivity * Specificity = ', 
+               round(Sensitivity[i]*Specificity[i],4)))
+}
+```
+We can see that cut = 0.5 have the greater accuracy (0.8482), and the greater combination of sensitivity and specificity (0.7049).
+
